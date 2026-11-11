@@ -1,0 +1,74 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: findmypack
+      POSTGRES_USER: findmypack
+      POSTGRES_PASSWORD: findmypack
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U findmypack -d findmypack"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: ghcr.io/${IMAGE_NAMESPACE:-local/findmypack}/backend:${IMAGE_TAG:-latest}
+    build:
+      context: ./backend
+      target: runtime
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/findmypack
+      SPRING_DATASOURCE_USERNAME: findmypack
+      SPRING_DATASOURCE_PASSWORD: findmypack
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    command: ["sh", "-c", "npm install && npm run dev -- --host 0.0.0.0"]
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+
+  test-backend:
+    profiles: ["test"]
+    build:
+      context: ./backend
+      target: test
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/findmypack
+      SPRING_DATASOURCE_USERNAME: findmypack
+      SPRING_DATASOURCE_PASSWORD: findmypack
+    depends_on:
+      db:
+        condition: service_healthy
+
+  test-frontend:
+    profiles: ["test"]
+    build:
+      context: ./frontend
+      target: test
+
+  frontend-prod:
+    profiles: ["production"]
+    image: ghcr.io/${IMAGE_NAMESPACE:-local/findmypack}/frontend:${IMAGE_TAG:-latest}
+    build:
+      context: ./frontend
+      target: production
+
+volumes:
+  postgres-data:
+  frontend-node-modules:
